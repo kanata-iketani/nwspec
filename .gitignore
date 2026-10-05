@@ -1,0 +1,10 @@
+app/progress.json
+app/quizstate.json
+app/mistakes.json
+app/questions.json
+app/notes.md
+app/server.log
+lesson90/
+.DS_Store
+app/latest.md
+app/ai_usage.json

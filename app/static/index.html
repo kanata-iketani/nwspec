@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ネスペどうじょう</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="topbar">
+  <span id="brand">🌐 ネスペどうじょう</span>
+  <select id="lessonSelect" title="レッスンを選ぶ"></select>
+  <nav id="chapterTabs"></nav>
+  <span id="progressBadge"></span>
+  <button id="qaToggle" title="先生に質問する">🙋 質問</button>
+</header>
+
+<main id="panes">
+  <section id="lessonPane">
+    <div id="material">
+      <h1 id="chTitle"></h1>
+      <div id="chText" class="md"></div>
+    </div>
+  </section>
+
+  <section id="quizPane">
+    <div id="quizCard">
+      <div id="quizHead">
+        <span id="quizCounter"></span>
+        <div id="quizDots"></div>
+      </div>
+      <div id="questionText" class="md"></div>
+      <div id="choices"></div>
+      <div id="feedback" class="hidden">
+        <div id="feedbackBanner"></div>
+        <div id="explanation" class="md"></div>
+        <div id="feedbackActions">
+          <button id="retryBtn" class="btn ghost hidden">もう一度この問題</button>
+          <button id="nextQBtn" class="btn primary">次の問題 →</button>
+        </div>
+      </div>
+      <div id="clearBanner" class="hidden">
+        <div class="clearEmoji">🎉</div>
+        <div class="clearText">チャプタークリア！</div>
+        <div class="clearSub">全問正解です。この調子でいきましょう。</div>
+        <button id="nextChBtn" class="btn primary">次のチャプターへ ≫</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<aside id="qaDrawer" class="hidden">
+  <div id="qaHead">
+    <button class="qaTab active" data-tab="chat">質問する</button>
+    <button class="qaTab" data-tab="notes">弱点ノート</button>
+    <span class="spacer"></span>
+    <button id="qaClose" title="閉じる">✕</button>
+  </div>
+
+  <div id="qaChatPane" class="qaPane">
+    <div id="qaContext"></div>
+    <div id="qaModes">
+      <button id="oralBtn" class="btn ghost">🎤 口頭試問を受ける（このチャプターから別角度で出題）</button>
+    </div>
+    <div id="qaLog"></div>
+    <div id="qaInputArea">
+      <textarea id="qaInput" rows="3" placeholder="いま学んでいる内容について先生に質問（Ctrl+Enter で送信）"></textarea>
+      <button id="qaSend" class="btn primary">送信</button>
+    </div>
+  </div>
+
+  <div id="qaNotesPane" class="qaPane hidden">
+    <div id="qaNotesActions">
+      <button id="qaSummaryBtn" class="btn">📝 弱点をまとめる</button>
+      <button id="qaReviewBtn" class="btn primary">🎯 復習問題を作る</button>
+    </div>
+    <div id="qaNotesStatus"></div>
+    <div id="qaSummary" class="md"></div>
+    <h3 class="noteH">📰 統計・法改正 直前対策（AI が Web 検索して作成）</h3>
+    <button id="latestBtn" class="btn">📰 最新の統計・法改正を調べてノートを作る</button>
+    <div id="latestNote" class="md"></div>
+    <h3 class="noteH">📕 にがて帳（間違えた問題）</h3>
+    <div id="mistakeList"></div>
+    <h3 class="noteH" id="qaListTitle">質問の記録</h3>
+    <div id="qaList"></div>
+  </div>
+</aside>
+
+<script src="app.js"></script>
+</body>
+</html>

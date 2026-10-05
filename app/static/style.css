@@ -1,0 +1,230 @@
+:root {
+  --bg: #f4f7f6;
+  --panel: #ffffff;
+  --text: #253238;
+  --muted: #6b7a80;
+  --border: #dde5e3;
+  --accent: #159f85;        /* メインのティールグリーン */
+  --accent-dark: #0e806b;
+  --accent-soft: #e2f5f0;
+  --warn: #e05a4e;
+  --warn-soft: #fdecea;
+  --gold: #f0a500;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  background: var(--bg); color: var(--text);
+  display: flex; flex-direction: column;
+}
+.hidden { display: none !important; }
+
+/* ---- ヘッダー ---- */
+#topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; background: var(--accent); color: #fff;
+  flex: 0 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+#brand { font-weight: bold; font-size: 16px; white-space: nowrap; }
+#lessonSelect {
+  max-width: 300px; padding: 5px 8px; border-radius: 6px; border: none;
+  background: rgba(255,255,255,0.92); color: var(--text); font-size: 13px;
+}
+#chapterTabs { display: flex; gap: 6px; overflow-x: auto; flex: 1; padding: 2px 0; }
+.chTab {
+  padding: 5px 12px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(255,255,255,0.22); color: #fff; font-size: 12px; white-space: nowrap;
+}
+.chTab.active { background: #fff; color: var(--accent-dark); font-weight: bold; }
+.chTab.passed::after { content: " ✅"; }
+#progressBadge { font-size: 12.5px; white-space: nowrap; opacity: 0.95; }
+#qaToggle {
+  background: var(--gold); color: #fff; border: none; border-radius: 999px;
+  padding: 6px 14px; font-size: 13px; font-weight: bold; cursor: pointer; white-space: nowrap;
+}
+#qaToggle:hover { filter: brightness(1.07); }
+
+/* ---- 2 ペイン ---- */
+#panes { flex: 1; display: flex; min-height: 0; }
+#lessonPane {
+  flex: 0 0 48%; max-width: 48%; overflow-y: auto;
+  background: var(--panel); border-right: 1px solid var(--border);
+}
+#material { padding: 22px 28px 80px; max-width: 760px; }
+#chTitle { font-size: 20px; margin: 0 0 14px; line-height: 1.5; }
+
+#quizPane { flex: 1; overflow-y: auto; padding: 22px; min-width: 0; }
+#quizCard {
+  background: var(--panel); border-radius: 14px; padding: 22px 24px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06); max-width: 680px; margin: 0 auto;
+}
+
+/* ---- 教科書 ---- */
+.md { line-height: 2.0; font-size: 14.5px; }
+.md p { margin: 10px 0; }
+.md h3, .md h4 {
+  margin: 22px 0 8px; padding: 6px 12px; font-size: 15px;
+  background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 6px 6px 0;
+}
+.md ul, .md ol { padding-left: 24px; }
+.md li { margin: 4px 0; }
+.md code {
+  background: #eef2f1; padding: 1px 6px; border-radius: 4px; font-size: 0.92em;
+}
+.md pre.code {
+  background: #f3f6f5; border: 1px solid var(--border); color: var(--text);
+  padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.7;
+}
+.md strong { color: var(--accent-dark); }
+.md blockquote {
+  margin: 10px 0; padding: 8px 14px; border-left: 4px solid var(--gold);
+  background: #fdf7ea; border-radius: 0 6px 6px 0;
+}
+.md table { border-collapse: collapse; margin: 10px 0; }
+.md th, .md td { border: 1px solid var(--border); padding: 6px 12px; font-size: 13.5px; }
+.md th { background: var(--accent-soft); }
+
+/* ---- クイズ ---- */
+#quizHead { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+#quizCounter { font-size: 13px; font-weight: bold; color: var(--accent-dark); white-space: nowrap; }
+#quizDots { display: flex; gap: 6px; flex-wrap: wrap; }
+.dot {
+  width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border);
+  font-size: 12px; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); background: #fff; cursor: pointer;
+}
+.dot.current { border-color: var(--accent); color: var(--accent-dark); font-weight: bold; }
+.dot.solved { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+#questionText { font-size: 15.5px; font-weight: 600; margin-bottom: 16px; }
+
+#choices { display: flex; flex-direction: column; gap: 10px; }
+.choice {
+  display: flex; align-items: flex-start; gap: 12px; text-align: left;
+  padding: 13px 16px; border-radius: 10px; border: 2px solid var(--border);
+  background: #fff; cursor: pointer; font-size: 14.5px; line-height: 1.7;
+  transition: border-color 0.12s, background 0.12s;
+}
+.choice:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.choice:disabled { cursor: default; opacity: 0.88; }
+.choice .num {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent-dark); font-weight: bold;
+  display: flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.choice.correct { border-color: var(--accent); background: var(--accent-soft); }
+.choice.correct .num { background: var(--accent); color: #fff; }
+.choice.wrong { border-color: var(--warn); background: var(--warn-soft); }
+.choice.wrong .num { background: var(--warn); color: #fff; }
+
+#feedback { margin-top: 18px; }
+#feedbackBanner {
+  padding: 12px 16px; border-radius: 10px; font-size: 16px; font-weight: bold; margin-bottom: 10px;
+}
+#feedbackBanner.good { background: var(--accent-soft); color: var(--accent-dark); }
+#feedbackBanner.bad { background: var(--warn-soft); color: var(--warn); }
+#explanation {
+  background: #f8faf9; border: 1px solid var(--border); border-radius: 10px;
+  padding: 4px 16px; font-size: 14px;
+}
+#feedbackActions { display: flex; gap: 10px; margin-top: 12px; justify-content: flex-end; }
+
+#clearBanner { text-align: center; padding: 30px 0 10px; }
+.clearEmoji { font-size: 44px; }
+.clearText { font-size: 20px; font-weight: bold; color: var(--accent-dark); margin: 8px 0 4px; }
+.clearSub { color: var(--muted); font-size: 13.5px; margin-bottom: 18px; }
+
+/* ---- ボタン ---- */
+.btn {
+  padding: 9px 18px; border-radius: 999px; border: 1px solid var(--border);
+  background: #fff; color: var(--text); cursor: pointer; font-size: 14px;
+}
+.btn:hover { filter: brightness(0.97); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: bold; }
+.btn.primary:hover { background: var(--accent-dark); }
+.btn.ghost { border-color: var(--accent); color: var(--accent-dark); }
+.btn:disabled { opacity: 0.5; cursor: wait; }
+
+/* ---- 質問ドロワー ---- */
+#qaDrawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 470px; max-width: 95vw;
+  background: var(--panel); border-left: 1px solid var(--border);
+  box-shadow: -4px 0 24px rgba(0,0,0,0.16); z-index: 50;
+  display: flex; flex-direction: column;
+}
+#qaHead {
+  display: flex; align-items: center; gap: 6px;
+  padding: 12px; border-bottom: 1px solid var(--border); flex: 0 0 auto;
+}
+.qaTab {
+  padding: 6px 16px; border-radius: 999px; border: 1px solid var(--border);
+  background: #fff; color: var(--text); cursor: pointer; font-size: 13px;
+}
+.qaTab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: bold; }
+.spacer { flex: 1; }
+#qaClose { background: none; border: none; cursor: pointer; font-size: 15px; color: var(--muted); }
+
+.qaPane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#qaContext {
+  padding: 7px 14px; font-size: 12px; color: var(--muted);
+  border-bottom: 1px solid var(--border); flex: 0 0 auto;
+}
+#qaModes { padding: 8px 14px 0; }
+#qaModes .btn { font-size: 12.5px; width: 100%; }
+#latestNote { font-size: 13.5px; margin: 10px 0 16px; }
+#latestNote:not(:empty) { border: 1px solid var(--border); border-radius: 10px; padding: 4px 16px; }
+#latestBtn { margin-bottom: 4px; }
+#qaLog { flex: 1; overflow-y: auto; padding: 14px; }
+.qaMsg { margin-bottom: 14px; font-size: 13.5px; line-height: 1.9; }
+.qaMsg .who { font-size: 11px; font-weight: bold; color: var(--muted); margin-bottom: 3px; }
+.qaMsg.user .bubble { background: var(--accent-soft); border-radius: 10px; padding: 9px 13px; white-space: pre-wrap; }
+.qaMsg.claude .bubble { background: #f4f6f5; border-radius: 10px; padding: 9px 13px; }
+.qaThinking { color: var(--muted); font-size: 13px; padding: 4px 0; }
+
+#qaInputArea {
+  flex: 0 0 auto; border-top: 1px solid var(--border); padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+#qaInput {
+  resize: vertical; background: #fff; color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 9px;
+  font-size: 13.5px; font-family: inherit;
+}
+#qaSend { align-self: flex-end; }
+
+#qaNotesPane { overflow-y: auto; padding: 14px; display: block; }
+#qaNotesActions { display: flex; gap: 8px; margin-bottom: 10px; }
+#qaNotesStatus { font-size: 12.5px; color: var(--muted); margin-bottom: 8px; min-height: 1em; }
+#qaSummary { font-size: 13.5px; margin-bottom: 16px; }
+#qaSummary:not(:empty) { border: 1px solid var(--border); border-radius: 10px; padding: 4px 16px; }
+#qaListTitle { font-size: 14px; margin: 10px 0 8px; }
+.noteH { font-size: 14px; margin: 14px 0 8px; }
+.mistakeItem {
+  border: 1px solid var(--border); border-left: 4px solid var(--warn);
+  border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; font-size: 12.5px;
+}
+.mistakeItem .meta { color: var(--muted); font-size: 11px; margin-bottom: 3px; display: flex; align-items: center; }
+.mistakeItem .meta button {
+  margin-left: auto; background: var(--accent-soft); border: none; color: var(--accent-dark);
+  cursor: pointer; font-size: 11px; border-radius: 999px; padding: 3px 10px;
+}
+.mistakeItem .wrongPick { color: var(--warn); }
+.qaItem {
+  border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+  margin-bottom: 8px; font-size: 12.5px;
+}
+.qaItem .meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; display: flex; }
+.qaItem .meta button { margin-left: auto; background: none; border: none; color: var(--warn); cursor: pointer; font-size: 11px; }
+.qaItem .q { font-weight: bold; margin-bottom: 4px; white-space: pre-wrap; }
+.qaItem .a { color: var(--muted); line-height: 1.7; }
+
+/* ---- スマホ対応 (縦積み) ---- */
+@media (max-width: 860px) {
+  #panes { flex-direction: column; overflow-y: auto; }
+  #lessonPane { flex: none; max-width: none; border-right: none; border-bottom: 1px solid var(--border); overflow-y: visible; }
+  #material { padding: 16px 18px 24px; }
+  #quizPane { overflow-y: visible; padding: 14px; }
+  #brand { font-size: 14px; }
+}
