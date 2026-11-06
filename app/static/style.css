@@ -228,3 +228,36 @@ body {
   #quizPane { overflow-y: visible; padding: 14px; }
   #brand { font-size: 14px; }
 }
+
+/* 過去問の原本切り抜き */
+img.kq { display: block; max-width: 100%; height: auto; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
+#modeSelect { margin-right: 6px; }
+
+/* 記述式(午後過去問) */
+.writeBox { width: 100%; min-height: 110px; box-sizing: border-box; padding: 10px; font: inherit; border: 1px solid #ccc; border-radius: 8px; resize: vertical; }
+.writeCount { text-align: right; font-size: 12px; color: #888; margin: 2px 0 8px; }
+.writeAnswer { margin: 12px 0 8px; padding: 10px 12px; background: #f6f8fb; border-radius: 8px; }
+.writeLabel { font-weight: bold; font-size: 13px; color: #456; margin: 6px 0; }
+
+/* 過去問 午前: 1ペイン・原本画像+ア〜エボタン */
+body.amMode #lessonPane { display: none; }
+body.amMode #quizPane { display: flex; justify-content: center; align-items: flex-start; }
+body.amMode #quizCard { width: 100%; max-width: 860px; height: fit-content; }
+img.kq.big { display: block; border: none; margin: 4px auto 12px; width: 100%; max-width: 760px; height: auto; }
+#choices.kana { flex-direction: row; gap: 14px; }
+#choices.kana .choice { flex: 1; justify-content: center; padding: 14px 0; }
+#choices.kana .choice .num { width: 40px; height: 40px; font-size: 20px; }
+.ovl { text-decoration: overline; }
+
+/* わからないボタン */
+.choice.dontKnow { justify-content: center; color: #777; border-style: dashed; background: #fafafa; }
+#choices.kana .choice.dontKnow { flex: 0 0 auto; padding: 14px 18px; }
+
+/* 図解(Mermaid) */
+.diagram { margin: 14px 0; padding: 12px; background: #fbfcfe; border: 1px solid #e3e8ef; border-radius: 10px; overflow-x: auto; text-align: center; }
+.diagram svg { max-width: 100%; height: auto; }
+
+/* 復習シャッフル・苦手ドリル */
+.drillBtn { margin-right: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.6); background: rgba(255,255,255,.15); color: #fff; font-weight: bold; cursor: pointer; white-space: nowrap; }
+.drillBtn:hover { background: rgba(255,255,255,.3); }
+#quizDots { flex-wrap: wrap; }

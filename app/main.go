@@ -42,6 +42,8 @@ type Question struct {
 	Choices     []string `json:"choices"`
 	Correct     int      `json:"correct"` // 0 始まり
 	Explanation string   `json:"explanation"`
+	Image       string   `json:"image,omitempty"`  // 過去問午前: 原本の切り抜き画像
+	Answer      string   `json:"answer,omitempty"` // 記述式(午後過去問)の解答例。あれば自己採点モード
 }
 
 type Chapter struct {
@@ -156,6 +158,23 @@ func (s *quizStore) markSolved(key string, qIndex, total int) (solved []bool, cl
 	out := make([]bool, total)
 	copy(out, cur)
 	return out, cleared
+}
+
+// unmark は正解済みを取り消して未正解に戻す(再挑戦で外れたとき)。
+func (s *quizStore) unmark(key string, qIndex, total int) []bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur := make([]bool, total)
+	copy(cur, s.m[key])
+	if qIndex >= 0 && qIndex < total {
+		cur[qIndex] = false
+	}
+	s.m[key] = cur
+	b, _ := json.MarshalIndent(s.m, "", "  ")
+	os.WriteFile(s.path, b, 0o644)
+	out := make([]bool, total)
+	copy(out, cur)
+	return out
 }
 
 func (s *quizStore) get(key string, total int) []bool {
@@ -286,7 +305,7 @@ func pathInts(r *http.Request) (lesson, ch int, ok bool) {
 	if _, err := fmt.Sscanf(r.PathValue("ch"), "%d", &ch); err != nil {
 		return 0, 0, false
 	}
-	return lesson, ch, lesson >= 1 && lesson <= 99 && ch >= 1 && ch <= 99
+	return lesson, ch, lesson >= 1 && lesson <= 999 && ch >= 1 && ch <= 99
 }
 
 // handleChapter は正解と解説を**含めずに**チャプターを返す。
@@ -304,10 +323,12 @@ func handleChapter(w http.ResponseWriter, r *http.Request) {
 	type qView struct {
 		Question string   `json:"question"`
 		Choices  []string `json:"choices"`
+		Write    bool     `json:"write,omitempty"`
+		Image    string   `json:"image,omitempty"`
 	}
 	qs := make([]qView, len(c.Quiz))
 	for i, q := range c.Quiz {
-		qs[i] = qView{Question: q.Question, Choices: q.Choices}
+		qs[i] = qView{Question: q.Question, Choices: q.Choices, Write: q.Answer != "", Image: q.Image}
 	}
 	writeJSON(w, map[string]any{
 		"lesson":   c.Lesson,
@@ -324,8 +345,24 @@ func handleChapter(w http.ResponseWriter, r *http.Request) {
 type answerReq struct {
 	Lesson  int `json:"lesson"`
 	Chapter int `json:"chapter"`
-	Q       int `json:"q"`
-	Choice  int `json:"choice"`
+	Q       int    `json:"q"`
+	Choice  int    `json:"choice"`
+	Drill   string `json:"drill,omitempty"` // "weak" のとき苦手ドリルとして連続正解を数える
+}
+
+// handleReveal は記述式問題の解答例を返す(自己採点の前に表示する)。
+func handleReveal(w http.ResponseWriter, r *http.Request) {
+	var req answerReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	c, err := loadChapter(req.Lesson, req.Chapter)
+	if err != nil || req.Q < 0 || req.Q >= len(c.Quiz) {
+		http.Error(w, "not found", 404)
+		return
+	}
+	writeJSON(w, map[string]string{"answer": c.Quiz[req.Q].Answer})
 }
 
 func handleAnswer(w http.ResponseWriter, r *http.Request) {
@@ -344,13 +381,19 @@ func handleAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := c.Quiz[req.Q]
-	if req.Choice < 0 || req.Choice >= len(q.Choices) {
+	// choice == -1 は「わからない」(不正解として扱い、にがて帳に入れる)
+	if req.Choice < -1 || req.Choice >= len(q.Choices) {
 		http.Error(w, "invalid choice", 400)
 		return
+	}
+	chosen := "わからない"
+	if req.Choice >= 0 {
+		chosen = q.Choices[req.Choice]
 	}
 
 	key := progressKey(req.Lesson, req.Chapter)
 	correct := req.Choice == q.Correct
+	srsRecord(req.Lesson, req.Chapter, req.Q, correct) // 復習(間隔反復)の記録
 
 	var solved []bool
 	var cleared bool
@@ -362,13 +405,21 @@ func handleAnswer(w http.ResponseWriter, r *http.Request) {
 			progress.set(key, "ran")
 		}
 	} else {
-		solved = quizState.get(key, len(c.Quiz))
+		// 以前正解していても、今回外れたら未正解に上書きする
+		solved = quizState.unmark(key, req.Q, len(c.Quiz))
 		progress.set(key, "ran")
 		mistakes.add(Mistake{
 			Time: time.Now().Format("2006-01-02 15:04"), Lesson: req.Lesson, Chapter: req.Chapter,
 			Title: c.Title, Q: req.Q, Question: q.Question,
-			Chosen: q.Choices[req.Choice], Answer: q.Choices[q.Correct],
+			Chosen: chosen, Answer: q.Choices[q.Correct],
 		})
+	}
+	// 苦手問題: 外したら苦手に入れる。苦手ドリルで正解したら連続正解を数える
+	graduated, streak := false, 0
+	if !correct {
+		weak.miss(req.Lesson, req.Chapter, req.Q)
+	} else if req.Drill == "weak" {
+		graduated, streak = weak.hit(req.Lesson, req.Chapter, req.Q)
 	}
 	writeJSON(w, map[string]any{
 		"correct":      correct,
@@ -376,6 +427,8 @@ func handleAnswer(w http.ResponseWriter, r *http.Request) {
 		"explanation":  q.Explanation,
 		"solved":       solved,
 		"cleared":      cleared,
+		"graduated":    graduated,
+		"streak":       streak,
 	})
 }
 
@@ -398,7 +451,7 @@ func detectRoot() string {
 
 func main() {
 	flag.StringVar(&courseRoot, "root", "", "講座ルート（lessonNN の親ディレクトリ。省略時は自動検出）")
-	flag.StringVar(&claudeModel, "claude-model", "sonnet", "質問回答に使う Claude モデル（claude CLI の --model に渡す。CLI がない環境では質問機能のみ無効）")
+	flag.StringVar(&claudeModel, "claude-model", "opus", "質問回答に使う Claude モデル（claude CLI の --model に渡す。CLI がない環境では質問機能のみ無効）")
 	flag.StringVar(&aiConfigURL, "ai-config-url", "https://raw.githubusercontent.com/kanata-iketani/nwspec/main/ai-config.json", "AI利用制限設定の取得元URL（空でローカル ai-config.json のみ使用）")
 	addr := flag.String("addr", defaultAddr, "待ち受けアドレス（127.0.0.1 のみ推奨）")
 	flag.Parse()
@@ -411,12 +464,18 @@ func main() {
 	quizState = newQuizStore(filepath.Join(appDir, "quizstate.json"))
 	mistakes = newMistakeStore(filepath.Join(appDir, "mistakes.json"))
 	questions = newQAStore(filepath.Join(appDir, "questions.json"))
+	weak = newWeakStore(filepath.Join(appDir, "weak.json"), mistakes.all())
 
 	static, _ := fs.Sub(staticFS, "static")
 	http.Handle("/", http.FileServer(http.FS(static)))
+	// 過去問の原本切り抜き画像
+	http.Handle("/kakomon/img/", http.StripPrefix("/kakomon/img/", http.FileServer(http.Dir(filepath.Join(courseRoot, "kakomon", "img")))))
 	http.HandleFunc("GET /api/course", handleCourse)
 	http.HandleFunc("GET /api/chapter/{lesson}/{ch}", handleChapter)
 	http.HandleFunc("POST /api/quiz/answer", handleAnswer)
+	http.HandleFunc("POST /api/quiz/reveal", handleReveal)
+	http.HandleFunc("GET /api/drill", handleDrill)
+	http.HandleFunc("GET /api/drill/stats", handleDrillStats)
 	http.HandleFunc("GET /api/mistakes", handleMistakes)
 	http.HandleFunc("POST /api/ask", handleAsk)
 	http.HandleFunc("POST /api/oral", handleOral)
@@ -429,6 +488,7 @@ func main() {
 	http.HandleFunc("POST /api/qa/review", handleReviewCreate)
 
 	log.Printf("%sを起動しました: http://%s （講座ルート: %s）", courseTitle, *addr, courseRoot)
+	srsInit() // 復習(間隔反復)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 

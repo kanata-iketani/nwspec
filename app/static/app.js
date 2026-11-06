@@ -6,6 +6,8 @@ let cur = { lesson: 0, chapter: 0 };
 let curData = null; // /api/chapter のレスポンス
 let curQ = 0;       // 表示中の問題番号
 let answering = false;
+let drill = null;   // 復習シャッフル/苦手ドリル中は { type }。通常の章は null
+const chapterTextCache = {};
 
 // ---- 簡易 Markdown レンダラ ----
 function esc(s) {
@@ -15,8 +17,17 @@ function inlineMd(s) {
   s = esc(s);
   s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\\overline\{([^}]*)\}/g, '<span class="ovl">$1</span>');
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img class="kq" alt="$1" src="$2">');
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   return s;
 }
+// 図(Mermaid)を描画する。描けなかった図は元のテキストのまま残す
+async function renderDiagrams() {
+  if (!window.mermaid) return;
+  try { await window.mermaid.run({ querySelector: 'pre.mermaid:not([data-processed])', suppressErrors: true }); } catch (e) { console.warn(e); }
+}
+
 function mdToHtml(md) {
   const lines = (md || '').replace(/\r\n/g, '\n').split('\n');
   let html = '', i = 0, list = null;
@@ -25,11 +36,16 @@ function mdToHtml(md) {
     const line = lines[i];
     if (/^```/.test(line)) {
       closeList();
+      const lang = line.slice(3).trim();
       const code = [];
       i++;
       while (i < lines.length && !/^```/.test(lines[i])) { code.push(lines[i]); i++; }
       i++;
-      html += `<pre class="code"><code>${esc(code.join('\n'))}</code></pre>`;
+      if (lang === 'mermaid') {
+        html += `<div class="diagram"><pre class="mermaid">${esc(code.join('\n'))}</pre></div>`;
+      } else {
+        html += `<pre class="code"><code>${esc(code.join('\n'))}</code></pre>`;
+      }
       continue;
     }
     const h = line.match(/^(#{1,4})\s+(.*)/);
@@ -77,11 +93,14 @@ async function loadCourse() {
   course = await (await fetch('/api/course')).json();
   const sel = $('lessonSelect');
   sel.innerHTML = '';
+  const mode = $('modeSelect').value;
+  try { localStorage.setItem('nwMode', mode); } catch (e) {}
   for (const l of course.lessons) {
+    if (!inMode(l.lesson, mode)) continue;
     const passed = l.chapters.filter((c) => c.status === 'passed').length;
     const opt = document.createElement('option');
     opt.value = l.lesson;
-    opt.textContent = `第${l.lesson}章 ${l.title || ''} (${passed}/${l.chapters.length})`;
+    opt.textContent = lessonLabel(l, passed);
     sel.appendChild(opt);
   }
   sel.onchange = () => {
@@ -89,6 +108,32 @@ async function loadCourse() {
     if (l) openChapter(l.lesson, l.chapters[0].chapter);
   };
   updateProgressBadge();
+}
+
+// 過去問: 41-49=午前Ⅱ, 51-69=午前Ⅰ, 71-89=午後
+function isKakomon(n) { return n >= 41 && n <= 89; }
+function inMode(n, mode) {
+  if (mode === 'all') return true;
+  if (mode === 'am') return n >= 41 && n <= 69;
+  if (mode === 'am2') return n >= 41 && n <= 49;
+  if (mode === 'am1') return n >= 51 && n <= 69;
+  if (mode === 'pm') return n >= 71 && n <= 89;
+  if (mode === 'orig') return !isKakomon(n);
+  return true;
+}
+function lessonLabel(l, passed) {
+  const head = isKakomon(l.lesson) ? '' : `第${l.lesson}章 `;
+  return `${head}${l.title || ''} (${passed}/${l.chapters.length})`;
+}
+function initMode() {
+  const m = $('modeSelect');
+  try { const v = localStorage.getItem('nwMode'); if (v) m.value = v; } catch (e) {}
+  m.onchange = async () => {
+    await loadCourse();
+    updateDrillStats();
+    const first = course.lessons.find((x) => inMode(x.lesson, m.value));
+    if (first) openChapter(first.lesson, first.chapters[0].chapter);
+  };
 }
 
 function lessonOf(n) { return course.lessons.find((x) => x.lesson === n); }
@@ -127,7 +172,7 @@ function markLocalStatus(status) {
   const opt = [...sel.options].find((o) => Number(o.value) === cur.lesson);
   if (opt) {
     const passed = l.chapters.filter((x) => x.status === 'passed').length;
-    opt.textContent = `第${l.lesson}章 ${l.title || ''} (${passed}/${l.chapters.length})`;
+    opt.textContent = lessonLabel(l, passed);
   }
 }
 
@@ -135,7 +180,9 @@ async function openChapter(lesson, chapter) {
   const res = await fetch(`/api/chapter/${lesson}/${chapter}`);
   if (!res.ok) return;
   curData = await res.json();
+  drill = null;
   cur = { lesson, chapter };
+  document.body.classList.toggle('amMode', false);
   location.hash = `#${lesson}/${chapter}`;
 
   $('lessonSelect').value = lesson;
@@ -143,12 +190,81 @@ async function openChapter(lesson, chapter) {
 
   $('chTitle').textContent = `${curData.title} ${curData.priority || ''}`;
   $('chText').innerHTML = mdToHtml(curData.text);
+  renderDiagrams();
   $('lessonPane').scrollTop = 0;
 
   // 最初の未正解問題から始める
   const firstUnsolved = curData.solved.findIndex((s) => !s);
   showQuestion(firstUnsolved >= 0 ? firstUnsolved : 0);
   qaSetContext();
+}
+
+// 今表示している問題が、どの章の何問目か(ドリル中は問題ごとに違う)
+function qRef() {
+  if (drill) { const it = curData.quiz[curQ]; return { lesson: it.lesson, chapter: it.chapter, q: it.q }; }
+  return { lesson: cur.lesson, chapter: cur.chapter, q: curQ };
+}
+
+// ---- 復習シャッフル / 苦手ドリル ----
+function modeRange() {
+  const m = $('modeSelect').value;
+  return { am: [41, 69], am2: [41, 49], am1: [51, 69], pm: [71, 89], orig: [1, 40], all: [1, 89] }[m] || [1, 89];
+}
+
+async function updateDrillStats() {
+  const [from, to] = modeRange();
+  try {
+    const r = await (await fetch(`/api/drill/stats?from=${from}&to=${to}`)).json();
+    $('reviewBtn').textContent = `🔀 復習 (${r.review})`;
+    $('weakBtn').textContent = `😣 苦手 (${r.weak})`;
+  } catch (e) {}
+}
+
+async function startDrill(type) {
+  const [from, to] = modeRange();
+  const r = await (await fetch(`/api/drill?type=${type}&from=${from}&to=${to}`)).json();
+  if (!r.items.length) {
+    alert(type === 'weak' ? 'この範囲の苦手問題はまだありません。' : 'この範囲でクリア済みの問題がまだありません。');
+    return;
+  }
+  drill = { type };
+  curData = { quiz: r.items, solved: r.items.map(() => false) };
+  $('chapterTabs').innerHTML = '';
+  history.replaceState(null, '', location.pathname);
+  showQuestion(0);
+}
+
+async function loadLeftText(lesson, chapter) {
+  const k = `${lesson}/${chapter}`;
+  if (!chapterTextCache[k]) {
+    const res = await fetch(`/api/chapter/${lesson}/${chapter}`);
+    if (!res.ok) return;
+    const d = await res.json();
+    chapterTextCache[k] = { title: d.title, text: d.text };
+  }
+  const d = chapterTextCache[k];
+  const l = lessonOf(lesson);
+  $('chTitle').textContent = `${l ? l.title : ''} ${d.title}`;
+  $('chText').innerHTML = mdToHtml(d.text);
+  renderDiagrams();
+  $('lessonPane').scrollTop = 0;
+}
+
+function showDrillResult() {
+  const n = curData.quiz.length;
+  const ok = curData.solved.filter((x) => x).length;
+  $('feedback').classList.add('hidden');
+  $('questionText').innerHTML = '';
+  $('choices').innerHTML = '';
+  $('quizCounter').textContent = `${n} 問中 ${ok} 問正解`;
+  renderDots();
+  $('clearText').textContent = drill.type === 'weak' ? '苦手ドリル おつかれさま!' : '復習シャッフル おつかれさま!';
+  $('clearSub').textContent = drill.type === 'weak'
+    ? `${n} 問中 ${ok} 問正解。苦手ドリルで${2}回続けて正解した問題は苦手から外れます。`
+    : `${n} 問中 ${ok} 問正解。外した問題は苦手に入りました。`;
+  $('nextChBtn').textContent = 'もう一度(別の問題で)';
+  $('clearBanner').classList.remove('hidden');
+  updateDrillStats();
 }
 
 // ---- クイズ ----
@@ -173,49 +289,150 @@ function showQuestion(i) {
   $('clearBanner').classList.add('hidden');
   $('feedback').classList.add('hidden');
   $('quizCounter').textContent = `問 ${i + 1} / ${curData.quiz.length}`;
+  if (drill) {
+    const it = curData.quiz[i];
+    cur = { lesson: it.lesson, chapter: it.chapter };
+    const l = lessonOf(it.lesson);
+    $('quizCounter').textContent = `${drill.type === 'weak' ? '😣 苦手' : '🔀 復習'} ${i + 1} / ${curData.quiz.length}` +
+      ` ・ ${l ? l.title : ''} ${it.title}` + (it.misses ? ` ・ ミス${it.misses}回` : '');
+    loadLeftText(it.lesson, it.chapter);
+    qaSetContext();
+  }
   renderDots();
-  $('questionText').innerHTML = mdToHtml(q.question);
   const box = $('choices');
   box.innerHTML = '';
+  box.classList.toggle('kana', !!q.image);
+  if (q.image) {
+    // 過去問午前: 原本画像をそのまま出し、ア〜エのボタンだけ並べる(本番と同じ形)
+    const head = (q.question.match(/^\*\*問\d+\*\*(（[^）]*）|\([^)]*\))?/) || [''])[0];
+    $('questionText').innerHTML = mdToHtml(head) + `<img class="kq big" src="${q.image}" alt="原本">`;
+    q.choices.forEach((text, ci) => {
+      const b = document.createElement('button');
+      b.className = 'choice';
+      b.title = text;
+      b.innerHTML = `<span class="num">${'アイウエ'[ci]}</span>`;
+      b.onclick = () => answer(ci);
+      box.appendChild(b);
+    });
+    addDontKnow(box);
+    return;
+  }
+  $('questionText').innerHTML = mdToHtml(q.question);
+  if (q.write) { showWrite(q, box); return; }
   q.choices.forEach((text, ci) => {
     const b = document.createElement('button');
     b.className = 'choice';
-    b.innerHTML = `<span class="num">${circled(ci)}</span><span>${inlineMd(text)}</span>`;
+    b.innerHTML = `<span class="num">${isKakomon(cur.lesson) ? 'アイウエオカ'[ci] : circled(ci)}</span><span>${inlineMd(text)}</span>`;
     b.onclick = () => answer(ci);
     box.appendChild(b);
   });
+  addDontKnow(box);
+}
+
+function addDontKnow(box) {
+  const b = document.createElement('button');
+  b.className = 'choice dontKnow';
+  b.textContent = '🤔 わからない';
+  b.onclick = () => answer(-1);
+  box.appendChild(b);
+}
+
+// 記述式(午後過去問): 自分の解答を書く → 解答例を見る → 自己採点
+function showWrite(q, box) {
+  const ta = document.createElement('textarea');
+  ta.className = 'writeBox';
+  ta.placeholder = '自分の解答を書いてください(字数指定があれば守る)';
+  const ref = qRef();
+  const key = `nwWrite:${ref.lesson}/${ref.chapter}/${ref.q}`;
+  try { ta.value = localStorage.getItem(key) || ''; } catch (e) {}
+  ta.oninput = () => { try { localStorage.setItem(key, ta.value); } catch (e) {} };
+  const cnt = document.createElement('div');
+  cnt.className = 'writeCount';
+  const upd = () => { cnt.textContent = `${[...ta.value.replace(/\s/g, '')].length} 字`; };
+  ta.addEventListener('input', upd); upd();
+  const btn = document.createElement('button');
+  btn.className = 'btn primary';
+  btn.textContent = '解答例を見る';
+  const ansBox = document.createElement('div');
+  ansBox.className = 'md writeAnswer hidden';
+  btn.onclick = async () => {
+    const res = await fetch('/api/quiz/reveal', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(qRef()),
+    });
+    const r = await res.json();
+    ansBox.innerHTML = '<div class="writeLabel">IPA 解答例</div>' + mdToHtml(r.answer) +
+      '<div class="writeLabel">自己採点: 解答例と同じ趣旨が書けましたか?</div>';
+    ansBox.classList.remove('hidden');
+    btn.remove();
+    q.choices.forEach((text, ci) => {
+      const b = document.createElement('button');
+      b.className = 'choice';
+      b.innerHTML = `<span>${inlineMd(text)}</span>`;
+      b.onclick = () => answer(ci);
+      box.appendChild(b);
+    });
+  };
+  box.append(ta, cnt, btn, ansBox);
+}
+
+// 質問時に「今開いている問題」と解答状況を先生に伝える
+let lastAns = null;
+function askContext() {
+  const solved = !!(curData && curData.solved && curData.solved[curQ]);
+  const ref = qRef();
+  const la = lastAns && lastAns.lesson === ref.lesson && lastAns.chapter === ref.chapter && lastAns.q === ref.q ? lastAns : null;
+  const ta = document.querySelector('#choices textarea');
+  return { lesson: ref.lesson, chapter: ref.chapter, q: ref.q, answered: !!la, chosen: la ? la.choice : 0, correct: la ? la.correct : false, solved, draft: ta ? ta.value : '' };
 }
 
 async function answer(choice) {
   if (answering) return;
   answering = true;
-  const buttons = [...$('choices').children];
+  const buttons = [...$('choices').querySelectorAll('button.choice')];
   buttons.forEach((b) => (b.disabled = true));
   try {
     const res = await fetch('/api/quiz/answer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lesson: cur.lesson, chapter: cur.chapter, q: curQ, choice }),
+      body: JSON.stringify({ ...qRef(), choice, drill: drill ? drill.type : '' }),
     });
     if (!res.ok) { alert(await res.text()); return; }
     const r = await res.json();
-    curData.solved = r.solved;
+    if (drill) curData.solved[curQ] = r.correct;
+    else curData.solved = r.solved;
+    lastAns = { ...qRef(), choice, correct: r.correct };
     renderDots();
 
     buttons[r.correctIndex]?.classList.add('correct');
-    if (!r.correct) buttons[choice]?.classList.add('wrong');
+    if (!r.correct && choice >= 0) buttons[choice]?.classList.add('wrong');
 
     const banner = $('feedbackBanner');
     banner.className = r.correct ? 'good' : 'bad';
-    banner.textContent = r.correct ? '⭕ 正解！' : '❌ 不正解…';
+    banner.textContent = r.correct ? '⭕ 正解！' : (choice < 0 ? '🤔 わからない → 正解を確認しよう' : '❌ 不正解…');
+    if (drill && drill.type === 'weak' && r.correct) {
+      banner.textContent += r.graduated ? ' 🎓 苦手を卒業しました' : ` (あと${2 - r.streak}回続けて正解で卒業)`;
+    }
+    if (!r.correct) banner.textContent += '(苦手に追加)';
     $('explanation').innerHTML = mdToHtml(r.explanation);
+    renderDiagrams();
     $('retryBtn').classList.toggle('hidden', r.correct);
     $('feedback').classList.remove('hidden');
     $('feedback').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
+    updateDrillStats();
+    if (drill) {
+      $('nextQBtn').textContent = curQ >= curData.quiz.length - 1 ? '結果を見る' : '次の問題 →';
+      return;
+    }
+    if (!r.correct) {
+      const c = lessonOf(cur.lesson)?.chapters.find((x) => x.chapter === cur.chapter);
+      if (c) c.status = 'ran';
+    }
     markLocalStatus(r.cleared ? 'passed' : 'ran');
-    $('nextQBtn').textContent = r.cleared ? 'クリア画面へ 🎉' : '次の問題 →';
-    $('nextQBtn').dataset.cleared = r.cleared ? '1' : '';
+    const last = curQ >= curData.quiz.length - 1;
+    const allDone = curData.solved.every((x) => x);
+    $('nextQBtn').textContent = last && allDone ? 'クリア画面へ 🎉' : '次の問題 →';
   } catch (e) {
     alert('通信エラー: ' + e);
   } finally {
@@ -224,16 +441,16 @@ async function answer(choice) {
 }
 
 function nextQuestion() {
-  if ($('nextQBtn').dataset.cleared === '1') {
-    showClear();
+  const n = curData.quiz.length;
+  if (drill) {
+    if (curQ < n - 1) showQuestion(curQ + 1); else showDrillResult();
     return;
   }
-  // 次の未正解問題へ (なければ次の番号へ循環)
-  const n = curData.quiz.length;
-  for (let d = 1; d <= n; d++) {
-    const i = (curQ + d) % n;
-    if (!curData.solved[i]) { showQuestion(i); return; }
-  }
+  // 最後の問題以外は、正解済みかどうかに関係なく次の番号へ進む
+  if (curQ < n - 1) { showQuestion(curQ + 1); return; }
+  // 最後の問題: 未正解があればそこへ、全部正解ならクリア画面
+  const i = curData.solved.findIndex((x) => !x);
+  if (i >= 0) { showQuestion(i); return; }
   showClear();
 }
 
@@ -242,11 +459,15 @@ function showClear() {
   $('questionText').innerHTML = '';
   $('choices').innerHTML = '';
   $('quizCounter').textContent = `全 ${curData.quiz.length} 問クリア`;
+  $('clearText').textContent = 'チャプタークリア！';
+  $('clearSub').textContent = '全問正解です。この調子でいきましょう。';
+  $('nextChBtn').textContent = '次のチャプターへ ≫';
   renderDots();
   $('clearBanner').classList.remove('hidden');
 }
 
 function nextChapter() {
+  if (drill) { startDrill(drill.type); return; }
   const l = lessonOf(cur.lesson);
   if (!l) return;
   const idx = l.chapters.findIndex((c) => c.chapter === cur.chapter);
@@ -337,7 +558,7 @@ async function qaAsk() {
       res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lesson: cur.lesson, chapter: cur.chapter, question: q }),
+        body: JSON.stringify(Object.assign({ lesson: cur.lesson, chapter: cur.chapter, question: q }, askContext())),
       });
     }
     thinking.remove();
@@ -504,16 +725,20 @@ function initQA() {
 // ---- 起動 ----
 async function main() {
   initQA();
+  initMode();
   await loadCourse();
   $('nextQBtn').onclick = nextQuestion;
   $('retryBtn').onclick = () => showQuestion(curQ);
   $('nextChBtn').onclick = nextChapter;
+  $('reviewBtn').onclick = () => startDrill('review');
+  $('weakBtn').onclick = () => startDrill('weak');
+  updateDrillStats();
 
   const m = location.hash.match(/^#(\d+)\/(\d+)$/);
   if (m && lessonOf(Number(m[1]))) {
     openChapter(Number(m[1]), Number(m[2]));
   } else if (course.lessons.length > 0) {
-    const l = course.lessons[0];
+    const l = course.lessons.find((x) => inMode(x.lesson, $('modeSelect').value)) || course.lessons[0];
     openChapter(l.lesson, l.chapters[0].chapter);
   }
 }

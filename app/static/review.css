@@ -1,0 +1,37 @@
+/* 復習(間隔反復) — 全講座共通 */
+#reviewBtn { margin-right: 8px; border: none; border-radius: 16px; padding: 6px 12px; background: #fff3; color: inherit; cursor: pointer; font: inherit; }
+#reviewBtn.hasDue { background: #ffcc33; color: #333; font-weight: bold; }
+#reviewOverlay { position: fixed; inset: 0; background: rgba(20, 30, 40, 0.45); z-index: 1000; overflow-y: auto; padding: 32px 16px; }
+#reviewOverlay.hidden { display: none; }
+.rvBox { background: #fff; border-radius: 14px; max-width: 880px; margin: 0 auto; padding: 20px 24px; box-shadow: 0 6px 30px rgba(0, 0, 0, 0.2); }
+.rvHead { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.rvHead b { font-size: 18px; }
+.rvCount { color: #678; margin-left: auto; }
+.rvClose { border: none; background: none; font-size: 20px; cursor: pointer; margin-left: 8px; }
+.rvLead { color: #456; font-size: 14px; line-height: 1.8; }
+.rvModes { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }
+.rvMode { flex: 1 1 200px; padding: 16px; border: 2px solid #dde4ec; border-radius: 12px; background: #f8fafc; font: inherit; font-size: 16px; cursor: pointer; text-align: left; }
+.rvMode:hover { border-color: #3a8; background: #eef8f3; }
+.rvMode span { display: block; font-size: 13px; color: #678; margin-top: 4px; }
+.rvOpt { display: inline-block; margin-right: 16px; font-size: 14px; color: #456; }
+.rvUp { font-size: 12px; color: #889; margin-top: 10px; }
+.rvEmpty { padding: 16px; text-align: center; font-size: 16px; }
+.rvSrc { font-size: 12px; color: #889; margin-bottom: 8px; }
+.rvQ { margin-bottom: 12px; }
+.rvChoices { display: flex; flex-direction: column; gap: 10px; }
+.rvFb { margin-top: 14px; }
+.rvFb.hidden { display: none; }
+.rvNext { margin-top: 10px; }
+.rvDone { font-size: 22px; font-weight: bold; margin: 12px 0; }
+.gradeBanner { font-weight: bold; padding: 8px 12px; border-radius: 8px; margin: 6px 0; }
+.gradeBanner.good { background: #e8f6ee; color: #1b7a43; }
+.gradeBanner.bad { background: #fdecec; color: #b33; }
+.rvBox .choice.correct { border-color: #3a8; background: #e8f6ee; }
+.rvBox .choice.wrong { border-color: #d55; background: #fdecec; }
+.rvBox .choice.dontKnow { justify-content: center; color: #777; border-style: dashed; }
+.rvBox .writeBox { width: 100%; min-height: 120px; box-sizing: border-box; padding: 10px; font: inherit; border: 1px solid #ccc; border-radius: 8px; }
+.rvDigest { background: #f8fafc; border-radius: 10px; padding: 12px 16px; margin: 8px 0; line-height: 1.9; }
+.rvCardBar { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+.rvWeakTag { color: #c55; font-weight: bold; margin-left: 6px; }
+.rvChDigest { margin: 10px 0; background: #f8fafc; border-radius: 8px; padding: 6px 12px; }
+.rvChDigest summary { cursor: pointer; color: #357; font-weight: bold; }

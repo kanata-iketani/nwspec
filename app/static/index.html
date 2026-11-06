@@ -5,10 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ネスペどうじょう</title>
 <link rel="stylesheet" href="style.css">
+<script src="vendor/mermaid.min.js"></script>
+<script>window.mermaid && mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'strict', fontFamily: 'inherit' });</script>
+<link rel="stylesheet" href="review.css">
 </head>
 <body>
 <header id="topbar">
   <span id="brand">🌐 ネスペどうじょう</span>
+ <select id="modeSelect" title="表示する教材">
+    <option value="am">過去問 午前Ⅰ・Ⅱ</option>
+    <option value="am2">過去問 午前Ⅱ</option>
+    <option value="am1">過去問 午前Ⅰ</option>
+    <option value="pm">過去問 午後</option>
+    <option value="orig">オリジナル教材</option>
+    <option value="all">すべて</option>
+  </select>
+  <button id="reviewBtn" class="drillBtn" title="クリア済みの問題からシャッフルで30問">🔀 復習</button>
+  <button id="weakBtn" class="drillBtn" title="間違えた・わからないを押した問題から30問">😣 苦手</button>
   <select id="lessonSelect" title="レッスンを選ぶ"></select>
   <nav id="chapterTabs"></nav>
   <span id="progressBadge"></span>
@@ -41,8 +54,8 @@
       </div>
       <div id="clearBanner" class="hidden">
         <div class="clearEmoji">🎉</div>
-        <div class="clearText">チャプタークリア！</div>
-        <div class="clearSub">全問正解です。この調子でいきましょう。</div>
+        <div class="clearText" id="clearText">チャプタークリア！</div>
+        <div class="clearSub" id="clearSub">全問正解です。この調子でいきましょう。</div>
         <button id="nextChBtn" class="btn primary">次のチャプターへ ≫</button>
       </div>
     </div>
@@ -87,5 +100,6 @@
 </aside>
 
 <script src="app.js"></script>
+<script src="review.js"></script>
 </body>
 </html>

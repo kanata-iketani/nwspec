@@ -236,6 +236,30 @@ type askReq struct {
 	Lesson   int    `json:"lesson"`
 	Chapter  int    `json:"chapter"`
 	Question string `json:"question"`
+	Q        int    `json:"q"`        // 今開いている問題(0始まり)
+	Answered bool   `json:"answered"` // その問題に答えたか
+	Chosen   int    `json:"chosen"`   // 選んだ選択肢(-1=わからない)
+	Correct  bool   `json:"correct"`  // 正解したか
+	Solved   bool   `json:"solved"`   // 正解済みか(以前の分も含む)
+	Draft    string `json:"draft"`    // 記述式で書いた自分の解答
+}
+
+var imgRefRe = regexp.MustCompile(`/kakomon/img/[^)\s"]+\.png`)
+
+// imagePaths は教材内の原本画像 URL をローカルの絶対パスに直す(Claude に Read で見せる)。
+func imagePaths(srcs ...string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, src := range srcs {
+		for _, u := range imgRefRe.FindAllString(src, -1) {
+			p := filepath.Join(courseRoot, "kakomon", "img", strings.TrimPrefix(u, "/kakomon/img/"))
+			if !seen[p] {
+				seen[p] = true
+				out = append(out, p)
+			}
+		}
+	}
+	return out
 }
 
 func handleAsk(w http.ResponseWriter, r *http.Request) {
@@ -253,12 +277,41 @@ func handleAsk(w http.ResponseWriter, r *http.Request) {
 	b.WriteString("あなたは" + qaCourseDesc + "講師です。" + qaAudience + "\n\n")
 
 	chapterTitle := ""
+	var imgs []string
 	if c, err := loadChapter(req.Lesson, req.Chapter); err == nil {
 		chapterTitle = c.Title
-		fmt.Fprintf(&b, "現在学習中のチャプター: lesson%02d ch%02d「%s」\n\n教科書:\n%s\n\n", req.Lesson, req.Chapter, c.Title, c.Text)
-		b.WriteString("このチャプターの問題と正解(参考):\n")
+		fmt.Fprintf(&b, "現在学習中のチャプター: lesson%02d ch%02d「%s」\n\n左に表示中の教科書:\n%s\n\n", req.Lesson, req.Chapter, c.Title, c.Text)
+		if req.Q >= 0 && req.Q < len(c.Quiz) {
+			q := c.Quiz[req.Q]
+			fmt.Fprintf(&b, "【受講者が今、右に開いている問題】問%d / %d\n%s\n選択肢:\n", req.Q+1, len(c.Quiz), q.Question)
+			for i, ch := range q.Choices {
+				fmt.Fprintf(&b, "  %d. %s\n", i+1, ch)
+			}
+			if q.Answer != "" {
+				fmt.Fprintf(&b, "(記述式。解答例: %s)\n", q.Answer)
+				if strings.TrimSpace(req.Draft) != "" {
+					fmt.Fprintf(&b, "受講者が書いた解答: %s\n", req.Draft)
+				}
+			}
+			switch {
+			case req.Answered && req.Chosen < 0:
+				b.WriteString("解答状況: 「わからない」を押した\n")
+			case req.Answered && req.Chosen < len(q.Choices):
+				fmt.Fprintf(&b, "解答状況: 「%s」を選んで%s\n", q.Choices[req.Chosen], map[bool]string{true: "正解", false: "不正解"}[req.Correct])
+			case req.Solved:
+				b.WriteString("解答状況: 以前に正解済み(今回はまだ答えていない)\n")
+			default:
+				b.WriteString("解答状況: まだ答えていない → この問題の正解は明かさず、考え方のヒントにとどめる\n")
+			}
+			fmt.Fprintf(&b, "この問題の正解(講師用・未解答なら明かさない): %s\n解説(講師用): %s\n\n", q.Choices[q.Correct], q.Explanation)
+			imgs = imagePaths(q.Image, q.Question, c.Text)
+		}
+		b.WriteString("同じチャプターの他の問題(参考):\n")
 		for i, q := range c.Quiz {
-			fmt.Fprintf(&b, "問%d: %s / 正解: %s / 解説: %s\n", i+1, q.Question, q.Choices[q.Correct], q.Explanation)
+			if i == req.Q {
+				continue
+			}
+			fmt.Fprintf(&b, "問%d: %s\n", i+1, q.Question)
 		}
 		b.WriteString("\n")
 	}
@@ -272,12 +325,22 @@ func handleAsk(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, "受講者の質問:\n%s\n\n", req.Question)
 	b.WriteString(`回答のルール:
 - です・ます調で、超初心者向けにかみ砕いて答える(目安400字以内)
-- 法律用語は身近な例え話に置き換えてから正式な言い方を添える
+- 質問の「この問題」「これ」「ここ」は、上の【受講者が今、右に開いている問題】と左の教科書を指す。まずそれを前提に答える
 - 受講者がまだ解いていない問題の答えを先回りして明かさない(解き終えた問題の解説は深掘りしてよい)
+- 専門用語は初出時に括弧で短くかみ砕く。例え話の段落は書かない
 - 本試験(午前Ⅰ・午前Ⅱ・午後)のどこでどう問われやすいかをひと言添える
-- ファイル操作やツールは使わず、上記の文脈だけで答える。Markdown で書く`)
+- 原本画像のパスが示されていれば、Read で画像を見てから答える(図・表・本文の確認に使う)。それ以外のファイル操作はしない。Markdown で書く`)
+	if len(imgs) > 0 {
+		b.WriteString("\n\n原本画像(問題・本文のページ。必要に応じて Read で見る):\n" + strings.Join(imgs, "\n"))
+	}
 
-	answer, err := runClaude("chat", b.String(), 180*time.Second)
+	var answer string
+	var err error
+	if len(imgs) > 0 {
+		answer, err = runClaudeArgs("chat", b.String(), 300*time.Second, "--allowedTools", "Read")
+	} else {
+		answer, err = runClaude("chat", b.String(), 180*time.Second)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), 502)
 		return
