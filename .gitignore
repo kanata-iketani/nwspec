@@ -8,3 +8,17 @@ lesson90/
 .DS_Store
 app/latest.md
 app/ai_usage.json
+# IPA 過去問データ(ローカル利用のみ。公開リポジトリには上げない)
+kakomon/raw/
+kakomon/annot/
+kakomon/img/
+kakomon/items/
+kakomon/answers.json
+lesson4[1-9]/
+lesson5[0-9]/
+lesson6[0-9]/
+lesson7[0-9]/
+lesson8[0-9]/
+app/weak.json
+kakomon/
+app/review.json
